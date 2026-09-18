@@ -1,6 +1,7 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {callDBusDaemon} from '../dbusCalls.js';
 
@@ -92,8 +93,29 @@ function _runningByDesktopId(desktopId) {
 
 // Called from a debounce timeout, so the click's own time is gone and a zero
 // timestamp makes activate do nothing.
-export function raiseApp(app) {
-    app.activate_full(-1, global.display.get_current_time_roundtrip());
+export function raiseApp(app, pid = null) {
+    const time = global.display.get_current_time_roundtrip();
+    const window = _windowOwnedBy(app, pid);
+    if (window)
+        Main.activateWindow(window, time);
+    else
+        app.activate_full(-1, time);
+}
+
+// Two instances of one app are a single Shell.App, and activating it raises
+// whichever of its windows was used last, so a click on the second instance's
+// tray icon brought the first one up. The item's pid is what ties it to its own
+// instance, so when an app's windows come from several processes, the window of
+// the item's process is raised instead. One process owning them all leaves the
+// app's own most-recent pick alone, it knows better than a pid can.
+function _windowOwnedBy(app, pid) {
+    if (!pid)
+        return null;
+    const windows = app.get_windows().filter(window => !window.skip_taskbar);
+    const owners = new Set(windows.map(window => window.get_pid()).filter(owner => owner > 0));
+    if (owners.size < 2)
+        return null;
+    return windows.find(window => window.get_pid() === pid) ?? null;
 }
 
 function _appFromPid(pid) {

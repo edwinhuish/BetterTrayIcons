@@ -6,3 +6,4 @@ schemas/gschemas.compiled
 *.swp
 *.swo
 .fallowrc.json
+/*.zip

@@ -309,7 +309,8 @@ export class TrayIcon {
     }
 
     // Activate on an item whose window sits on another workspace did nothing
-    // visible, so raise through the shell instead.
+    // visible, so raise through the shell instead. The pid goes along with it
+    // so an app that runs twice raises the instance this icon belongs to.
     _activate() {
         const app = runningApp({
             pid: this._pid,
@@ -321,7 +322,7 @@ export class TrayIcon {
             return;
         }
         this._onCloseMenu();
-        raiseApp(app);
+        raiseApp(app, this._pid);
     }
 
     // Items without Activate answer UnknownMethod, the click did nothing
