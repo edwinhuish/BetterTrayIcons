@@ -8,10 +8,12 @@ import TrayIconsSubpage, {TRAY_ICON_STYLE_KEYS} from '../subpages/trayIconsSubpa
 
 import {createCardPicker} from '../components/card.js';
 import {buildPanelBoxScene} from '../components/scenes/panelScene.js';
-import {createSpinRow, createSubpageRow} from '../components/row.js';
+import {createSpinRow, createSubpageRow, createActionRow} from '../components/row.js';
 import {createResetButton} from '../components/page.js';
+import {NEXT_ICON_NAME} from '../components/icon.js';
+import {showPage} from '../components/sidebar.js';
 
-const PLACEMENT_KEYS = Object.freeze(['tray-position', 'tray-order', 'visible-icon-limit']);
+const PLACEMENT_KEYS = Object.freeze(['tray-position', 'tray-order']);
 
 const APPEARANCE_RESET_KEYS = Object.freeze([
     ...PLACEMENT_KEYS,
@@ -76,13 +78,11 @@ export class AppearancePage extends Adw.PreferencesPage {
             max: 20,
         }));
 
-        rows.add(createSpinRow({
-            title: _('Visible Icons'),
-            subtitle: _('How many icons stay in the panel. Extra icons move to the overflow menu, and 0 moves them all.'),
-            settings: this._settings,
-            key: 'visible-icon-limit',
-            min: 0,
-            max: 20,
+        rows.add(createActionRow({
+            title: _('Panel Icons'),
+            subtitle: _('Choose per app which icons stay in the panel and which move to the overflow menu.'),
+            suffixIcon: NEXT_ICON_NAME,
+            onActivate: () => showPage(this._window, _('Applications')),
         }));
     }
 

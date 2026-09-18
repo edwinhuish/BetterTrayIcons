@@ -3,7 +3,7 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-import {setAppConfigValue, deleteAppConfig, displayAppName, formatAppName, orderedAppIds, readVisibleOrder, setAppPriorities, getAppConfigMap} from '../../shared/appConfig.js';
+import {setAppConfigValue, deleteAppConfig, displayAppName, formatAppName, isFoldedIntoOverflow, orderedAppIds, readVisibleOrder, setAppPriorities, getAppConfigMap} from '../../shared/appConfig.js';
 import {resolveIcon, themeProbeKey} from '../../shared/iconLoading.js';
 import {clearIds, connectScoped, debounceTo, removeTimer} from '../../shared/lifecycle.js';
 import {createButton, createIconButton} from '../components/button.js';
@@ -111,6 +111,17 @@ export default class AppDialog extends Adw.Dialog {
             this._updateValue('is_hidden', hideRow.active);
         });
         group.add(hideRow);
+
+        const panelRow = new Adw.SwitchRow({
+            title: _('Show in Panel'),
+            subtitle: _('Turn off to fold this icon into the overflow menu.'),
+            active: !isFoldedIntoOverflow(this._data),
+        });
+
+        panelRow.connect('notify::active', () => {
+            this._updateValue('in_overflow', panelRow.active ? null : true);
+        });
+        group.add(panelRow);
 
         group.add(this._buildPositionRow());
 

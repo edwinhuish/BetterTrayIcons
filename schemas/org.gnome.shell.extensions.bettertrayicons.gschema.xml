@@ -15,6 +15,7 @@
                         "icon_theme_path": "...",
                         "cached_icon_path": "...",
                         "is_hidden": false,
+                        "in_overflow": false,
                         "priority": 0
                     }
                 }
@@ -291,10 +292,18 @@
         </key>
 
         <!-- Limits & Layout -->
+        <!-- Which icons stay in the panel is a per-app choice now. The count
+             below is read once to reproduce the old split, see
+             overflow-selection-migrated. -->
         <key name="visible-icon-limit" type="i">
             <range min="0"/>
             <default>2</default>
-            <summary>Number of tray icons shown inline before overflow kicks in</summary>
+            <summary>Legacy: number of tray icons that stayed inline before placement became per app</summary>
+        </key>
+
+        <key name="overflow-selection-migrated" type="b">
+            <default>false</default>
+            <summary>Whether the legacy visible-icon-limit has been turned into per-app placement</summary>
         </key>
 
         <key name="overflow-layout-mode" type="s">

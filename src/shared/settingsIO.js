@@ -392,6 +392,10 @@ function _sanitizeAppConfigForImport(appId, appConfig, homeDir, iconPaths) {
         }
     }
 
+    // Only the popup needs a mark of its own, anything else means the panel.
+    if (appConfig.in_overflow !== true)
+        delete appConfig.in_overflow;
+
     _sanitizeBadgeFields(appConfig);
 
     // A non-string here reaches resolveIcon, which calls startsWith on it and

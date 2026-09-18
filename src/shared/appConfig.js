@@ -273,6 +273,12 @@ export function unreadBadgeEnabled(entry) {
     return !!entry?.custom_icon && entry?.unread_badge === true;
 }
 
+// An icon lives on the panel or in the overflow popup, and which one is the
+// user's choice per app. The panel is the default, the popup is the opt-in.
+export function isFoldedIntoOverflow(entry) {
+    return entry?.in_overflow === true;
+}
+
 export function userConfigSignature(settings) {
     const map = getAppConfigMap(settings);
     const kept = {};
@@ -486,6 +492,39 @@ export function orderedAppIds(settings) {
         .map(entry => entry.appId);
 }
 
+// The count this release drops kept the first N icons inline and pushed the
+// rest into the popup, and a panel arranged around it must not lose every icon
+// to the popup on update. Marking that tail once reproduces the split the user
+// already had, and the count never speaks again. A placement already on an
+// entry belongs to the user, the migration leaves it alone.
+export function migrateOverflowSelection(settings) {
+    if (settings.get_boolean('overflow-selection-migrated'))
+        return;
+
+    const order = orderedAppIds(settings);
+    // A fresh install has nothing to reproduce yet, so the seeding waits for
+    // the first app and then splits the way a new tray always did.
+    if (order.length === 0)
+        return;
+
+    settings.set_boolean('overflow-selection-migrated', true);
+
+    const limit = settings.get_int('visible-icon-limit');
+    const map = getAppConfigMap(settings);
+    let changed = false;
+
+    for (const appId of order.slice(limit)) {
+        const entry = map[appId];
+        if (entry && entry.in_overflow === undefined) {
+            entry.in_overflow = true;
+            changed = true;
+        }
+    }
+
+    if (changed)
+        _saveMap(settings, map);
+}
+
 // One settings write for the whole order. Per-icon writes would emit a changed
 // signal each, and every signal fans out to all listeners in both processes.
 export function setAppPriorities(settings, appIdsInOrder) {
@@ -542,7 +581,7 @@ export function deleteAppConfig(settings, appId) {
 }
 
 export function resetAllAppConfigs(settings) {
-    const keep = new Set([...RUNTIME_APP_CONFIG_FIELDS, 'priority']);
+    const keep = new Set([...RUNTIME_APP_CONFIG_FIELDS, 'priority', 'in_overflow']);
     const map = getAppConfigMap(settings);
     let changed = false;
 

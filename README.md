@@ -31,7 +31,7 @@
 
 ## About
 
-Better Tray Icons puts tray icons back into the GNOME panel where they belong. You decide how many stay visible, and the rest tuck neatly away into a popup behind a toggle button.
+Better Tray Icons puts tray icons back into the GNOME panel where they belong. You decide which apps stay visible, and the rest tuck neatly away into a popup behind a toggle button.
 
 Every icon can be renamed, hidden, reordered or swapped out for a custom one. Clicks are fully configurable for both tray icons and the toggle button, with double-click and long-press support. Spacing, padding, colors, the toggle button styling, all of it is up to you.
 
@@ -46,7 +46,7 @@ Everything you need to tame the tray, and nothing you do not.
 &nbsp;✓&nbsp; **Drag and drop** reordering, in the panel and inside the popup<br>
 &nbsp;✓&nbsp; **Full click control** for left, middle and right, each with double-click and long-press<br>
 &nbsp;✓&nbsp; **Toggle-button actions** like open popup, cycle icons, action menu and open settings<br>
-&nbsp;✓&nbsp; **Per-app overrides** to rename, hide, reorder or replace any icon<br>
+&nbsp;✓&nbsp; **Per-app overrides** to rename, hide, reorder, fold into the popup or replace any icon<br>
 &nbsp;✓&nbsp; **Independent styling** for tray icons, toggle button and overflow container<br>
 &nbsp;✓&nbsp; **Hover tooltips** with configurable side and delay<br>
 &nbsp;✓&nbsp; **Symbolic icon mode** for a clean, native look where supported<br>

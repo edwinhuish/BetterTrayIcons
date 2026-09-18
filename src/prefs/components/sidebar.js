@@ -101,7 +101,16 @@ export function setPrefsWindow(window, {pages, iconPath}) {
     const overlay = new Adw.ToastOverlay({child: splitView});
     window.set_content(overlay);
 
-    _shells.set(window, {navView, overlay, splitView});
+    _shells.set(window, {navView, overlay, splitView, pages, list});
+}
+
+// Selecting the sidebar row keeps one code path in charge of the stack, the
+// root title and the collapsed sidebar, so it moves the way a click does.
+export function showPage(window, title) {
+    const {list, pages} = _shells.get(window);
+    const index = pages.findIndex(page => page.title === title);
+    if (index >= 0)
+        list.select_row(list.get_row_at_index(index));
 }
 
 export function pushSubpage(window, page) {

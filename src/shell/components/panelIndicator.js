@@ -4,7 +4,7 @@ import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 
-import {getAppConfigMap, setAppPriorities, byPriorityThenAppId, publishVisibleOrder, clearVisibleOrder} from '../../shared/appConfig.js';
+import {getAppConfigMap, setAppConfigValue, setAppPriorities, byPriorityThenAppId, isFoldedIntoOverflow, publishVisibleOrder, clearVisibleOrder} from '../../shared/appConfig.js';
 import {clearIds, debounceTo, disconnectAll, disconnectSignal, disposeAll, removeTimer} from '../../shared/lifecycle.js';
 import {connectColorSetChanges} from '../trayStyle.js';
 import {isDisposed, trackDisposal} from '../disposal.js';
@@ -32,7 +32,6 @@ const DRAG_SLIDE_STAGGER_MS = 10;
 const LAYOUT_KEYS = Object.freeze([
     'overflow-layout-mode',
     'grid-column-limit',
-    'visible-icon-limit',
     'toggle-position',
     'enable-wine-support',
 ]);
@@ -72,6 +71,7 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             this._dwellId = 0;
             this._pendingOrder = null;
             this._pendingAnchor = null;
+            this._pendingFold = null;
             this._slideWatches = new Map();
 
             this._visibleBox = new St.BoxLayout({
@@ -166,18 +166,35 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             });
         }
 
+        // Cycling is the rotation the count used to produce: one icon leaves
+        // the panel as another arrives, so the panel keeps its width. The
+        // placement lives on the app now, so the two that cross the line are
+        // written along with the order.
         _cycleIcons(reverse = false) {
-            const visibleItems = this._liveIconEntries().filter(item =>
+            const entries = this._liveIconEntries().filter(item =>
                 !item.config?.is_hidden && item.actor.visible && item.actor.get_parent());
-            if (visibleItems.length < 2)
+            if (entries.length < 2)
+                return;
+
+            const {inline, folded} = this._partition(entries.map(entry => entry.actor));
+            if (inline.length === 0 || folded.length === 0)
+                return;
+
+            const leaving = (reverse ? inline.at(-1) : inline[0])._appId;
+            const arriving = (reverse ? folded.at(-1) : folded[0])._appId;
+            // An item the shell could not identify has no entry to store a
+            // placement on, so a half rotation would only shuffle the order.
+            if (!leaving || !arriving)
                 return;
 
             if (reverse)
-                visibleItems.unshift(visibleItems.pop());
+                entries.unshift(entries.pop());
             else
-                visibleItems.push(visibleItems.shift());
+                entries.push(entries.shift());
 
-            setAppPriorities(this._settings, visibleItems.map(item => item.appId));
+            setAppConfigValue(this._settings, leaving, 'in_overflow', true);
+            setAppConfigValue(this._settings, arriving, 'in_overflow', null);
+            setAppPriorities(this._settings, entries.map(entry => entry.appId));
         }
 
         _liveIconEntries() {
@@ -218,7 +235,7 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             const togglePosition = this._settings.get_string('toggle-position');
             const wineEnabled = this._settings.get_boolean('enable-wine-support');
 
-            const sortedActors = [];
+            const orderedActors = [];
             for (const {actor, config} of this._liveIconEntries()) {
                 // Wine-off wrappers and Passive items stay registered, the
                 // layout must not resurrect them.
@@ -228,12 +245,11 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
 
                 actor.visible = !isHidden;
                 if (!isHidden)
-                    sortedActors.push(actor);
+                    orderedActors.push(actor);
             }
 
-            const visibleCount = this._visibleCountFor(sortedActors.length);
-            const overflowCount = sortedActors.length - visibleCount;
-            const hasOverflow = overflowCount > 0;
+            const {inline, folded} = this._partition(orderedActors);
+            const hasOverflow = folded.length > 0;
 
             if (hasOverflow) {
                 this._overflowMenu.attachToManager();
@@ -245,9 +261,9 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
                 toggleActor.hide();
             }
 
-            this._placeIntoContainers(sortedActors);
+            this._placeGroups({inline, folded});
 
-            this._overflowMenu.updateGeometry(overflowCount);
+            this._overflowMenu.updateGeometry(folded.length);
 
             debounceTo(this, '_settleTimeoutId', GEOMETRY_SETTLE_MS, () => this._overflowMenu.updateGeometry());
 
@@ -279,7 +295,7 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
                 // Keyed by the item because two items can share an appId.
                 const appId = actor._appId;
                 const config = appId && configMap[appId];
-                parts.push(`${id}:${config?.is_hidden ? 1 : 0}:${config?.priority ?? 0}`);
+                parts.push(`${id}:${config?.is_hidden ? 1 : 0}:${isFoldedIntoOverflow(config) ? 1 : 0}:${config?.priority ?? 0}`);
             }
             parts.sort();
             return parts.join('|');
@@ -337,6 +353,9 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             this._dragActive = false;
             this._releaseDragGrab();
             this._cancelPreview();
+            // acceptDrop has read it by now, and a cancelled drag has to lay
+            // the icons back out where they were placed.
+            this._pendingFold = null;
             this._sweepSlideWatches();
             // Without a write no layout pass follows, so a cancel puts the
             // arrangement back by hand.
@@ -373,6 +392,10 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
                 return DND.DragMotionResult.NO_DROP;
 
             const [stageX, stageY] = dragStageCoords(dragActor);
+            // The container the pointer sits in is the placement the drop
+            // writes, so the preview has to follow the pointer, not the config.
+            this._pendingFold = {actor, inOverflow: this._pointerInOverflow(stageX, stageY)};
+
             const current = this._iconsInVisualOrder().map(entry => entry.actor);
             const target = this._dropSlotAt(actor, current, stageX, stageY);
             const order = current.slice();
@@ -431,9 +454,16 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             if (dropped === -1)
                 return false;
 
+            const {appId} = entries[dropped];
+
+            // Landing in the other container is a placement change of its own,
+            // and the order below is written to match it.
+            const foldTo = this._pendingFold?.actor === actor ? this._pendingFold.inOverflow : null;
+            if (foldTo !== null)
+                setAppConfigValue(this._settings, appId, 'in_overflow', foldTo ? true : null);
+
             // Icons sharing an appId share one priority, passing every
             // member would order their block by the wrong one.
-            const {appId} = entries[dropped];
             setAppPriorities(this._settings, entries
                 .filter((entry, i) => i === dropped || entry.appId !== appId)
                 .map(entry => entry.appId));
@@ -444,7 +474,7 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
 
         _dropSlotAt(dragged, current, x, y) {
             const overflow = this._overflowMenu.container;
-            if (this._overflowMenu.isOpen && isPointInActor(x, y, overflow)) {
+            if (this._pointerInOverflow(x, y)) {
                 const grid = current.filter(actor => actor.get_parent() === overflow);
                 return current.length - grid.length + slotIndexAt(grid, x, y, dragged);
             }
@@ -452,15 +482,39 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
             return slotIndexAt(row, x, y);
         }
 
-        _visibleCountFor(total) {
-            return Math.min(total, this._settings.get_int('visible-icon-limit'));
+        _pointerInOverflow(x, y) {
+            return this._overflowMenu.isOpen &&
+                isPointInActor(x, y, this._overflowMenu.container);
+        }
+
+        // Slicing one priority-ordered list into the two containers, never a
+        // count: which surface an icon sits on is stored on its app.
+        _partition(actors) {
+            const configMap = getAppConfigMap(this._settings);
+            const inline = [];
+            const folded = [];
+
+            for (const actor of actors) {
+                const isFolded = this._pendingFold?.actor === actor
+                    ? this._pendingFold.inOverflow
+                    : isFoldedIntoOverflow(configMap[actor._appId]);
+                (isFolded ? folded : inline).push(actor);
+            }
+
+            return {inline, folded};
         }
 
         _placeIntoContainers(actors, shouldSlide = false) {
-            const visibleCount = this._visibleCountFor(actors.length);
+            this._placeGroups(this._partition(actors), shouldSlide);
+        }
+
+        _placeGroups({inline, folded}, shouldSlide = false) {
+            this._placeGroup(inline, this._visibleBox, shouldSlide);
+            this._placeGroup(folded, this._overflowMenu.container, shouldSlide);
+        }
+
+        _placeGroup(actors, parent, shouldSlide) {
             actors.forEach((actor, index) => {
-                const isInline = index < visibleCount;
-                const parent = isInline ? this._visibleBox : this._overflowMenu.container;
                 if (shouldSlide) {
                     this._slideFromCurrent(actor, index * DRAG_SLIDE_STAGGER_MS);
                 } else {
@@ -470,8 +524,7 @@ export const PanelIndicator = GObject.registerClass({GTypeName: 'BetterTrayIcons
                     actor.remove_transition('translation-y');
                     actor.set_translation(0, 0, 0);
                 }
-                moveActorToIndex(actor, parent,
-                    isInline ? index : index - visibleCount);
+                moveActorToIndex(actor, parent, index);
             });
         }
 

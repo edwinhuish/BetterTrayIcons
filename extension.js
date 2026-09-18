@@ -8,7 +8,7 @@ import {error, warn, clearWarnedOnce} from './src/shared/logging.js';
 import {readFileText, isCancelledError} from './src/shared/asyncIo.js';
 import {importSettingsFromJSON, probeImportIconPaths, saveSettingsToFile, isOwnSyncSource} from './src/shared/settingsIO.js';
 import {clearIds, debounceTo, disconnectSignal, disconnectAll, disposeAll, removeTimer} from './src/shared/lifecycle.js';
-import {clearSeenCache, userConfigSignature} from './src/shared/appConfig.js';
+import {clearSeenCache, migrateOverflowSelection, userConfigSignature} from './src/shared/appConfig.js';
 import {clearDetachedMenuManager, clearMenuLayer} from './src/shell/popupMenus.js';
 import {placeIndicatorInPanel, TrayButton} from './src/shell/components/trayButton.js';
 import {clearIconCaches} from './src/shell/icons/iconResolver.js';
@@ -60,6 +60,11 @@ export default class BetterTrayIconsExtension extends Extension {
                 return;
 
             this._settings = this.getSettings();
+
+            // Before the indicator builds its first layout, or an install
+            // upgrading from the visible-icon-limit count would see the panel
+            // hand every icon to the popup at once.
+            migrateOverflowSelection(this._settings);
 
             this._settingsSignals = [];
 

@@ -4,7 +4,7 @@ import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
 import {gettext as _} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
-import {getAppConfigs, deleteAppConfig, resetAllAppConfigs, displayAppName} from '../../shared/appConfig.js';
+import {getAppConfigs, deleteAppConfig, resetAllAppConfigs, displayAppName, isFoldedIntoOverflow, setAppConfigValue} from '../../shared/appConfig.js';
 import {connectScoped, clearIds, debounceTo, removeTimer} from '../../shared/lifecycle.js';
 import {resolveIcon, probeIconPaths, themeProbeKey, tintedSymbolicIconMap} from '../../shared/iconLoading.js';
 import AppDialog from '../dialogs/appDialog.js';
@@ -114,7 +114,7 @@ export class ApplicationsPage extends Adw.PreferencesPage {
 
         this._appsGroup = new Adw.PreferencesGroup({
             title: _('Detected Apps'),
-            description: _('Settings persist after the app closes.'),
+            description: _('Settings persist after the app closes. An icon keeps its place in the panel until you fold it into the overflow menu.'),
         });
         this.add(this._appsGroup);
 
@@ -156,6 +156,8 @@ export class ApplicationsPage extends Adw.PreferencesPage {
                 : [];
 
             const badges = flavor ? [{text: flavor, variant: 'info'}] : [];
+            if (isFoldedIntoOverflow(app))
+                badges.push({text: _('Overflow'), variant: 'info'});
             if (app.is_background_proxy)
                 badges.push({text: _('Background App'), variant: 'info'});
 
@@ -164,7 +166,7 @@ export class ApplicationsPage extends Adw.PreferencesPage {
                 subtitle: `${_('ID')}: ${app.id}`,
                 prefixWidget: iconImage,
                 badge: badges,
-                suffixWidgets: hiddenMark,
+                suffixWidgets: [...hiddenMark, _createPlacementSwitch(this._settings, app)],
                 suffixIcon: NEXT_ICON_NAME,
                 onActivate: () => this._openAppConfiguration(app),
             }));
@@ -232,7 +234,7 @@ export class ApplicationsPage extends Adw.PreferencesPage {
     _confirmResetAll() {
         showConfirmationDialog(this._window, {
             title: _('Reset all apps?'),
-            message: _('Restores name, icon and status icons to defaults for every detected app. Their order is kept.'),
+            message: _('Restores name, icon and status icons to defaults for every detected app. Their order and placement are kept.'),
             confirmLabel: _('Reset All'),
             destructive: true,
             onConfirm: () => this._resetAll(),
@@ -253,6 +255,30 @@ export class ApplicationsPage extends Adw.PreferencesPage {
 
 function isLegacyAppId(id) {
     return LEGACY_ID_PATTERNS.some(pattern => pattern.test(id));
+}
+
+// The switch is the quick way to pick a surface, the app's own dialog carries
+// the same choice with room for the explanation. A hidden icon shows on
+// neither, so its placement sits out until it is shown again.
+function _createPlacementSwitch(settings, app) {
+    const inPanel = !isFoldedIntoOverflow(app);
+    const placement = new Gtk.Switch({
+        active: inPanel,
+        valign: Gtk.Align.CENTER,
+        sensitive: !app.is_hidden,
+    });
+
+    placement.update_property([Gtk.AccessibleProperty.LABEL], [_('Show in Panel')]);
+    placement.tooltip_text = inPanel
+        ? _('Shown in the panel. Turn off to fold it into the overflow menu.')
+        : _('Folded into the overflow menu. Turn on to show it in the panel.');
+
+    placement.connect('notify::active', () => {
+        // The panel is the default, so only the popup needs a field of its own.
+        setAppConfigValue(settings, app.id, 'in_overflow', placement.active ? null : true);
+    });
+
+    return placement;
 }
 
 function _deleteAppConfigsStaggered(settings, appIds, onComplete) {
