@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.1](https://github.com/nexaknight/BetterTrayIcons/compare/v3.3.0...v3.3.1) (2026-09-19)
+
+
+### Bug Fixes
+
+* **sni:** 修复点击提醒托盘图标后窗口未显示 ([86daafd](https://github.com/nexaknight/BetterTrayIcons/commit/86daafd96945302b620fe5f1b97298997c777008))
+
 ## [3.3.0](https://github.com/nexaknight/BetterTrayIcons/compare/v3.2.4...v3.3.0) (2026-09-19)
 
 

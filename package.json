@@ -1,6 +1,6 @@
 {
   "name": "better-tray-icons",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "A GNOME Shell extension that brings tray icons back to the top panel.",
   "type": "module",
   "scripts": {
