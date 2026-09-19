@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.3.0](https://github.com/nexaknight/BetterTrayIcons/compare/v3.2.4...v3.3.0) (2026-09-19)
+
+
+### Features
+
+* **release:** 支持交互式选择版本 ([e09ea2f](https://github.com/nexaknight/BetterTrayIcons/commit/e09ea2fbcb1d66a7df858ffb8b5b70118249b03c))
+* 图标面板位置改为按应用配置 ([58ebb9e](https://github.com/nexaknight/BetterTrayIcons/commit/58ebb9eecce0ca966e8df3493dc3b45a64578516))
+
+### Bug Fixes
+
+* **tray:** 应用已在前台时转发激活请求 ([e8f4d88](https://github.com/nexaknight/BetterTrayIcons/commit/e8f4d8861a6b5b57931292d162eb1693a18bbfa6))
+* **托盘:** 提升图标所属应用实例的窗口 ([d88fbc7](https://github.com/nexaknight/BetterTrayIcons/commit/d88fbc758eb096c559d2e0b538fc21fc8a6b0d5c))
+
 ## [3.2.4](https://github.com/nexaknight/BetterTrayIcons/compare/v3.2.3...v3.2.4) (2026-09-04)
 
 
