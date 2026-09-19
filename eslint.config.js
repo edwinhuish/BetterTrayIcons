@@ -7,6 +7,14 @@ export default defineConfig([
     },
     gnome.configs.recommended,
     {
+        files: ['scripts/**/*.mjs'],
+        languageOptions: {
+            globals: {
+                process: 'readonly',
+            },
+        },
+    },
+    {
         rules: {
             camelcase: ['error', {
                 properties: 'never',

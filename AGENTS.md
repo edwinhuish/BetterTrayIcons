@@ -48,6 +48,34 @@ the translations; `media/` stays out. There is no transpilation: the shell and
 the prefs window load these files as-is, so ES module syntax and GJS imports
 (`gi://`, `resource:///`) must be used directly.
 
+### Releases
+
+The version GNOME Shell, extensions.gnome.org and the About page show lives in
+`metadata.json`'s `version-name`; `package.json` is not the release version.
+Releases are cut by `scripts/release.mjs`, which is package-manager agnostic
+(an `npm version` based flow broke under pnpm, which ran the hook instead of
+the bump):
+
+```sh
+pnpm release                      # interactive: patch / minor / major, the commits preselect
+pnpm release 3.3.0                # explicit version
+pnpm release minor                # or patch / major (feat -> minor, fix -> patch)
+pnpm release 3.3.0 --dry-run      # inspect the changelog without touching anything
+pnpm release 3.3.0 --push         # also push the branch and the tag
+git push --follow-tags            # without --push, the tag is what release-asset.yml ships
+```
+
+The prompt only appears on a terminal; piped or CI shells without a version
+keep the explicit-version error instead of hanging.
+
+The script refuses a dirty tree or an existing tag, updates `package.json`,
+`metadata.json`, `.github/.release-please-manifest.json` (which keeps the CI
+release-please quiet) and prepends a `CHANGELOG.md` section in release-please's
+own format, built from the conventional commits since the last cut. It then
+commits as `chore(main): release <version>` and tags `v<version>`. A version
+with nothing to document (no feat/fix/perf/revert/i18n commit) is rejected,
+mirroring release-please.
+
 ## 3. Runtime model: two processes
 
 The code runs in two separate processes and nothing outside `src/shared/` may
@@ -315,6 +343,7 @@ Prefs must not import from `src/shell/`; anything both sides need belongs in
 | Sync, import/export | `shared/settingsIO.js`, `extension.js` (monitor/push), `prefs/pages/generalPage.js` |
 | Preferences UI | `prefs/pages/*`, `prefs/subpages/*`, `prefs/components/*` |
 | Translations | `po/*.po`, `po/POTFILES.in` when adding files |
+| Cutting a release | `scripts/release.mjs`, the `release` script in `package.json`, `.github/release-please-config.json` |
 
 ## 11. Gotchas
 
