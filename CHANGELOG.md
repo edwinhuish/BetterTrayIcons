@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.2](https://github.com/nexaknight/BetterTrayIcons/compare/v3.3.1...v3.3.2) (2026-09-19)
+
+
+### Bug Fixes
+
+* **托盘:** 修复闪烁提示状态过早结束 ([f32074c](https://github.com/nexaknight/BetterTrayIcons/commit/f32074c89c179558b105f7d3b09da408a47c686b))
+
 ## [3.3.1](https://github.com/nexaknight/BetterTrayIcons/compare/v3.3.0...v3.3.1) (2026-09-19)
 
 
