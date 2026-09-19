@@ -31,6 +31,11 @@ const MENU_REOPEN_GUARD_MS = 200;
 
 const MENU_DROP_DELAY_MS = 0;
 
+// Apps answer Activate before their window shows up, and some only reach what
+// is on the current workspace. The wait lets the app move first, the raise
+// that follows only cleans up what is still out of sight.
+const ACTIVATION_SETTLE_MS = 400;
+
 // Keys that need a fresh resolve rather than a restyle. The color ones decide
 // the tint that goes into a symbolic icon's bytes, which no restyle can change.
 const ICON_RESOLVE_KEYS = Object.freeze([
@@ -63,7 +68,8 @@ export class TrayIcon {
         this._settingsConnectId = 0;
         this._configSig = null;
         this._pixmapHash = null;
-        this._hasAlert = false;
+        this._isAlerting = false;
+        this._activationDeferId = 0;
         this._updateGen = 0;
         this._titleGen = 0;
         this._unreadUnsub = null;
@@ -309,33 +315,72 @@ export class TrayIcon {
         }
     }
 
-    // Activate on an item whose window sits on another workspace did nothing
-    // visible, so raise through the shell instead. The pid goes along with it
-    // so an app that runs twice raises the instance this icon belongs to.
+    // A blinking icon means the app knows which chat, dialog or notification
+    // the alert stands for, so its own activation goes first in every window
+    // state, closed and minimized included. The shell raise then only steps in
+    // when the app did not answer or left its window out of sight, which is
+    // what carries a window on another workspace to the front. Icons that do
+    // not alert keep the plain raise, some apps toggle their window on
+    // Activate and a raise is the least surprising answer for them.
     _activate() {
-        const app = runningApp({
-            pid: this._pid,
-            appId: this.appId,
-            packagingKind: getAppConfigValue(this._settings, this.appId, 'packaging'),
-        });
+        if (this._isAlerting) {
+            this._activateAlerted();
+            return;
+        }
+
+        const app = this._runningApp();
         if (!app) {
             this._fireAndClose('ActivateRemote');
             return;
         }
-
-        // A blinking icon on a window that already has focus cannot be answered
-        // by raising it, and the raise lands so softly the click reads as dead.
-        // The app is the only side that knows which chat, dialog or notification
-        // the alert stands for, so the activation goes to it and it puts that in
-        // front itself. Out of focus the raise does the work, which is what
-        // restores a minimized window before the app shows where the unread is.
-        if (this._hasAlert && isAppInFront(app, this._pid)) {
-            this._fireAndClose('ActivateRemote');
-            return;
-        }
-
         this._onCloseMenu();
         raiseApp(app, this._pid);
+    }
+
+    _activateAlerted() {
+        this._proxy.ActivateRemote(0, 0, (_result, err) => {
+            if (this._isDestroyed)
+                return;
+            if (err) {
+                warnOnce(`Activate:${this.appId}`,
+                    `${this.id} does not answer Activate, raising instead: ${err.message}`);
+                this._onCloseMenu();
+                this._raiseFallback();
+                return;
+            }
+            this._onCloseMenu();
+            this._raiseAfterActivation();
+        });
+    }
+
+    _raiseAfterActivation() {
+        clearIds(this, removeTimer, '_activationDeferId');
+        this._activationDeferId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ACTIVATION_SETTLE_MS, () => {
+            this._activationDeferId = 0;
+            if (this._isDestroyed)
+                return GLib.SOURCE_REMOVE;
+
+            const app = this._runningApp();
+            if (app && !isAppInFront(app, this._pid))
+                raiseApp(app, this._pid);
+
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // The app never got the call, the shell raise is the only move left.
+    _raiseFallback() {
+        const app = this._runningApp();
+        if (app)
+            raiseApp(app, this._pid);
+    }
+
+    _runningApp() {
+        return runningApp({
+            pid: this._pid,
+            appId: this.appId,
+            packagingKind: getAppConfigValue(this._settings, this.appId, 'packaging'),
+        });
     }
 
     // Items without Activate answer UnknownMethod, the click did nothing
@@ -383,9 +428,11 @@ export class TrayIcon {
             return;
 
         this._pixmapHash = pixmapHash;
-        // Whether the icon is signaling something. _activate reads it to tell
-        // a click that a raise can answer from one only the app can.
-        this._hasAlert = detected.hasAlert;
+        // Whether the icon is signaling something: an attention status, an icon
+        // that drifted from its calm baseline, or a visible unread badge.
+        // _activate reads it to hand the activation to the app, which is the
+        // only side that knows what the signal stands for.
+        this._isAlerting = detected.hasAlert || badge !== null;
 
         const entry = this.appId ? getAppConfigMap(this._settings)[this.appId] : null;
         this._syncUnreadListener(entry);
@@ -600,7 +647,7 @@ export class TrayIcon {
         disposeAll(this, 'destroy', '_draggable', '_clickController', '_tooltip');
         disconnectSignal(this, this._settings, '_settingsConnectId');
         disposeAll(this, 'disconnect', '_colorSetWatch');
-        clearIds(this, removeTimer, '_updateDeferId', '_titleDeferId', '_menuDropId');
+        clearIds(this, removeTimer, '_updateDeferId', '_titleDeferId', '_menuDropId', '_activationDeferId');
 
         disconnectAll(this, this._proxy, '_proxySignals', 'disconnectSignal');
         disconnectAll(this, this._proxy, '_gObjectSignals');
