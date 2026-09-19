@@ -12,7 +12,7 @@ import {connectColorSetChanges, refreshTrayStyle, syncHoverStyle} from '../trayS
 import {connectSurfaceChanges} from '../actorPlacement.js';
 import {isDisposed, trackDisposal} from '../disposal.js';
 import {createPanelMenu, menuAnchorFor, menuManagerFor, destroyMenuSafely, POPUP_ANIMATION_NONE} from '../popupMenus.js';
-import {addUnreadListener, raiseApp, runningApp, unreadTargets} from '../features/launcherEntries.js';
+import {addUnreadListener, isAppInFront, raiseApp, runningApp, unreadTargets} from '../features/launcherEntries.js';
 import {DBusMenuClient} from './dbusMenuClient.js';
 import {ClickController} from '../features/clickController.js';
 import {DRAG_SETTING_KEYS, setupIconDragSource, syncDragEnabled} from '../features/dragAndDrop.js';
@@ -63,6 +63,7 @@ export class TrayIcon {
         this._settingsConnectId = 0;
         this._configSig = null;
         this._pixmapHash = null;
+        this._hasAlert = false;
         this._updateGen = 0;
         this._titleGen = 0;
         this._unreadUnsub = null;
@@ -321,6 +322,18 @@ export class TrayIcon {
             this._fireAndClose('ActivateRemote');
             return;
         }
+
+        // A blinking icon on a window that already has focus cannot be answered
+        // by raising it, and the raise lands so softly the click reads as dead.
+        // The app is the only side that knows which chat, dialog or notification
+        // the alert stands for, so the activation goes to it and it puts that in
+        // front itself. Out of focus the raise does the work, which is what
+        // restores a minimized window before the app shows where the unread is.
+        if (this._hasAlert && isAppInFront(app, this._pid)) {
+            this._fireAndClose('ActivateRemote');
+            return;
+        }
+
         this._onCloseMenu();
         raiseApp(app, this._pid);
     }
@@ -370,6 +383,9 @@ export class TrayIcon {
             return;
 
         this._pixmapHash = pixmapHash;
+        // Whether the icon is signaling something. _activate reads it to tell
+        // a click that a raise can answer from one only the app can.
+        this._hasAlert = detected.hasAlert;
 
         const entry = this.appId ? getAppConfigMap(this._settings)[this.appId] : null;
         this._syncUnreadListener(entry);

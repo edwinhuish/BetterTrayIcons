@@ -102,6 +102,22 @@ export function raiseApp(app, pid = null) {
         app.activate_full(-1, time);
 }
 
+// Raising the window the user is already looking at shows nothing, so a caller
+// that has something else to do about a click needs to know that first.
+export function isAppInFront(app, pid = null) {
+    // The overview covers the window the display still reports as focused, and
+    // raising it is exactly what dismisses the overview.
+    if (Main.overview?.visible)
+        return false;
+
+    const focused = global.display.focus_window;
+    if (!focused)
+        return false;
+
+    const window = _windowOwnedBy(app, pid);
+    return window ? focused === window : app.get_windows().includes(focused);
+}
+
 // Two instances of one app are a single Shell.App, and activating it raises
 // whichever of its windows was used last, so a click on the second instance's
 // tray icon brought the first one up. The item's pid is what ties it to its own
