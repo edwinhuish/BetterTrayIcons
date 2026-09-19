@@ -36,6 +36,9 @@ const MENU_DROP_DELAY_MS = 0;
 // that follows only cleans up what is still out of sight.
 const ACTIVATION_SETTLE_MS = 400;
 
+// How long a calm frame has to last before a running blink counts as over.
+const ALERT_LINGER_MS = 5000;
+
 // Keys that need a fresh resolve rather than a restyle. The color ones decide
 // the tint that goes into a symbolic icon's bytes, which no restyle can change.
 const ICON_RESOLVE_KEYS = Object.freeze([
@@ -69,6 +72,7 @@ export class TrayIcon {
         this._configSig = null;
         this._pixmapHash = null;
         this._isAlerting = false;
+        this._calmSince = 0;
         this._activationDeferId = 0;
         this._updateGen = 0;
         this._titleGen = 0;
@@ -429,10 +433,25 @@ export class TrayIcon {
 
         this._pixmapHash = pixmapHash;
         // Whether the icon is signaling something: an attention status, an icon
-        // that drifted from its calm baseline, or a visible unread badge.
-        // _activate reads it to hand the activation to the app, which is the
-        // only side that knows what the signal stands for.
-        this._isAlerting = detected.hasAlert || badge !== null;
+        // that drifted from its calm baseline, a changed pixmap, or a visible
+        // unread badge. _activate reads it to hand the activation to the app,
+        // which is the only side that knows what the signal stands for.
+        const isAlerting = detected.hasAlert ||
+            detected.contentAlert === true || badge !== null;
+        // A blink alternates alert and calm frames, so one calm frame must not
+        // end the alert while it is still running. It lingers until the icon
+        // has stayed calm for a while.
+        if (isAlerting) {
+            this._isAlerting = true;
+            this._calmSince = 0;
+        } else if (this._isAlerting) {
+            if (!this._calmSince)
+                this._calmSince = GLib.get_monotonic_time();
+            if (GLib.get_monotonic_time() - this._calmSince > ALERT_LINGER_MS * 1000) {
+                this._isAlerting = false;
+                this._calmSince = 0;
+            }
+        }
 
         const entry = this.appId ? getAppConfigMap(this._settings)[this.appId] : null;
         this._syncUnreadListener(entry);

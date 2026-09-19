@@ -128,11 +128,22 @@ async function _resolveIcon(proxy, settings, appId, lastPixmapHash, status, dete
         !!(detectedName && baseline && detectedName !== baseline &&
            !isVolatileIconName(detectedName));
 
-    const detected = {iconName: detectedName, hasAlert, baselineMissing: !baseline};
+    // Electron trays (WeChat among them) draw their blink into the pixmap and
+    // carry no icon name to compare, so the resting content hash is what tells
+    // the two apart. It feeds the activation hand-off and the unread badge
+    // alike, the rendered icon keeps following the calm rules.
+    let contentBadge = null;
+    if (!hasAlert && status !== 'NeedsAttention')
+        contentBadge = await _contentAlertBadge(proxy, settings, appId, detectedName);
+
+    const detected = {
+        iconName: detectedName,
+        hasAlert,
+        baselineMissing: !baseline,
+        contentAlert: contentBadge !== null,
+    };
 
     const isUnreadEnabled = unreadBadgeEnabled(configMap[appId]);
-    const isCounterClass = status !== 'NeedsAttention' &&
-        (!detectedName || isVolatileIconName(detectedName));
     let badge = null;
     let isAlertCovered = false;
     if (isUnreadEnabled) {
@@ -143,12 +154,10 @@ async function _resolveIcon(proxy, settings, appId, lastPixmapHash, status, dete
         if (!badge && status !== 'NeedsAttention') {
             if (hasAlert)
                 badge = {text: null};
-            else if (isCounterClass)
-                badge = await _contentAlertBadge(proxy, settings, appId, detectedName);
+            else
+                badge = contentBadge;
         }
         isAlertCovered = badge !== null;
-    } else if (isCounterClass) {
-        await _rememberRestingContent(proxy, settings, appId, detectedName);
     }
 
     const stateIcons = customIcon
@@ -289,17 +298,9 @@ async function _contentAlertBadge(proxy, settings, appId, detectedName) {
     return contentHash === baseline ? null : {text: null};
 }
 
-// Whatever the app showed when it first came up, kept per session so the blob
-// stays untouched while the badge is off.
+// Whatever the app showed when it first came up, the fallback baseline for the
+// runs that predate a persisted hash.
 const _restingContentHash = new Map();
-
-async function _rememberRestingContent(proxy, settings, appId, detectedName) {
-    if (!appId || _restingContentHash.has(appId))
-        return;
-    const hash = await _liveIconContentHash(proxy, settings, detectedName);
-    if (hash !== null)
-        _restingContentHash.set(appId, hash);
-}
 
 async function _liveIconContentHash(proxy, settings, detectedName) {
     if (detectedName) {
